@@ -197,6 +197,7 @@ jobs:
       - name: Publish Release
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           TAG_NAME: v${{ inputs.version }}
           RELEASE_TITLE: Email MCP v${{ inputs.version }}
           PRERELEASE: ${{ inputs.prerelease }}
@@ -224,9 +225,9 @@ jobs:
             create_args+=(--prerelease)
           fi
 
-          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" release-artifacts/* --clobber
-            gh release edit "$TAG_NAME" --title "$RELEASE_TITLE" --notes-file release-notes.md
+          if gh release view "$TAG_NAME" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" release-artifacts/* --clobber --repo "$REPO"
+            gh release edit "$TAG_NAME" --repo "$REPO" --title "$RELEASE_TITLE" --notes-file release-notes.md
           else
-            gh release create "${create_args[@]}"
+            gh release create "${create_args[@]}" --repo "$REPO"
           fi
