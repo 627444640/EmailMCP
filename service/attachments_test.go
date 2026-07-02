@@ -35,8 +35,8 @@ func TestSaveAttachmentKeepsFileInsideConfiguredDownloadDir(t *testing.T) {
 }
 
 func TestAttachmentPathAllowedUsesConfiguredAllowedDirs(t *testing.T) {
-	allowedDir := tempDirInPackage(t, "allowed-")
-	blockedDir := tempDirInPackage(t, "blocked-")
+	allowedDir := tempDirOutsideSensitiveRoots(t, "email-mcp-allowed-")
+	blockedDir := tempDirOutsideSensitiveRoots(t, "email-mcp-blocked-")
 	allowedFile := filepath.Join(allowedDir, "send.pdf")
 	blockedFile := filepath.Join(blockedDir, "send.pdf")
 	if err := os.WriteFile(allowedFile, []byte("ok"), 0o600); err != nil {
@@ -54,9 +54,13 @@ func TestAttachmentPathAllowedUsesConfiguredAllowedDirs(t *testing.T) {
 	}
 }
 
-func tempDirInPackage(t *testing.T, pattern string) string {
+func tempDirOutsideSensitiveRoots(t *testing.T, pattern string) string {
 	t.Helper()
-	dir, err := os.MkdirTemp(".", pattern)
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Fatalf("UserHomeDir returned error: %v", err)
+	}
+	dir, err := os.MkdirTemp(home, pattern)
 	if err != nil {
 		t.Fatalf("MkdirTemp returned error: %v", err)
 	}
