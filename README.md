@@ -38,6 +38,8 @@ Invoice filtering, attachment review, amount extraction, and report writing are 
 
 ## Desktop Install
 
+Prebuilt internal packages should be distributed from GitHub Releases, not GitHub Packages. GitHub Packages is for package registries such as npm, NuGet, Maven, RubyGems, or container images.
+
 ### Windows
 
 Build the installer on Windows:
@@ -86,6 +88,32 @@ apps/desktop/src-tauri/target/release/bundle/macos/
 ```
 
 For unsigned internal builds, macOS may block the first launch. Use Control-click -> **Open**, or approve it from **System Settings -> Privacy & Security**.
+
+## Publishing Releases
+
+This repository includes a manual GitHub Actions release workflow:
+
+```text
+.github/workflows/release.yml
+```
+
+To publish desktop packages:
+
+1. Open the GitHub repository.
+2. Go to **Actions**.
+3. Run **Release desktop packages**.
+4. Enter a version such as `0.1.0`.
+5. Keep `prerelease=true` for unsigned internal builds.
+6. Wait for the Windows and macOS jobs to finish.
+7. Open **Releases** and download the generated installer files.
+
+The workflow builds:
+
+- Windows NSIS setup executable.
+- macOS dmg.
+- macOS zipped `.app`.
+
+The release workflow temporarily applies the input version to the desktop package metadata during CI. Source files in the repository are not modified by the workflow.
 
 ## Codex Integration
 
