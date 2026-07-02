@@ -35,8 +35,8 @@ func TestSaveAttachmentKeepsFileInsideConfiguredDownloadDir(t *testing.T) {
 }
 
 func TestAttachmentPathAllowedUsesConfiguredAllowedDirs(t *testing.T) {
-	allowedDir := t.TempDir()
-	blockedDir := t.TempDir()
+	allowedDir := tempDirInPackage(t, "allowed-")
+	blockedDir := tempDirInPackage(t, "blocked-")
 	allowedFile := filepath.Join(allowedDir, "send.pdf")
 	blockedFile := filepath.Join(blockedDir, "send.pdf")
 	if err := os.WriteFile(allowedFile, []byte("ok"), 0o600); err != nil {
@@ -52,4 +52,20 @@ func TestAttachmentPathAllowedUsesConfiguredAllowedDirs(t *testing.T) {
 	if isAttachmentPathAllowed(blockedFile, []string{allowedDir}) {
 		t.Fatalf("expected file outside configured allowed dir to be rejected")
 	}
+}
+
+func tempDirInPackage(t *testing.T, pattern string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp(".", pattern)
+	if err != nil {
+		t.Fatalf("MkdirTemp returned error: %v", err)
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("Abs returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(abs)
+	})
+	return abs
 }
