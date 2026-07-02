@@ -460,7 +460,7 @@ func fetchBodySections(c *client.Client, uid uint32, msg *imap.Message) (text, h
 	}
 
 	// 遍历 BodyStructure,找到 text/plain 和 text/html 部分
-	var textPart, htmlPart []int
+	var textPart, htmlPart *bodyPartRef
 
 	msg.BodyStructure.Walk(func(path []int, part *imap.BodyStructure) bool {
 		// 收集附件名
@@ -472,13 +472,11 @@ func fetchBodySections(c *client.Client, uid uint32, msg *imap.Message) (text, h
 		switch mimeType {
 		case "text/plain":
 			if textPart == nil {
-				textPart = make([]int, len(path))
-				copy(textPart, path)
+				textPart = newBodyPartRef(path, part)
 			}
 		case "text/html":
 			if htmlPart == nil {
-				htmlPart = make([]int, len(path))
-				copy(htmlPart, path)
+				htmlPart = newBodyPartRef(path, part)
 			}
 		}
 		return true
@@ -486,18 +484,12 @@ func fetchBodySections(c *client.Client, uid uint32, msg *imap.Message) (text, h
 
 	// 获取 text/plain 正文
 	if textPart != nil {
-		textSeq := new(imap.SeqSet)
-		textSeq.AddNum(uid)
-		section := &imap.BodySectionName{BodyPartName: imap.BodyPartName{Path: textPart}}
-		text = fetchSection(c, textSeq, section)
+		text = fetchBodyPart(c, uid, textPart)
 	}
 
 	// 获取 text/html 正文
 	if htmlPart != nil {
-		htmlSeq := new(imap.SeqSet)
-		htmlSeq.AddNum(uid)
-		section := &imap.BodySectionName{BodyPartName: imap.BodyPartName{Path: htmlPart}}
-		html = fetchSection(c, htmlSeq, section)
+		html = fetchBodyPart(c, uid, htmlPart)
 	}
 
 	// 如果没有找到分段的 text/plain,尝试整个 BODY[]
@@ -511,8 +503,42 @@ func fetchBodySections(c *client.Client, uid uint32, msg *imap.Message) (text, h
 	return text, html, attachments
 }
 
+type bodyPartRef struct {
+	path []int
+	part *imap.BodyStructure
+}
+
+func newBodyPartRef(path []int, part *imap.BodyStructure) *bodyPartRef {
+	return &bodyPartRef{path: append([]int(nil), path...), part: part}
+}
+
+func fetchBodyPart(c *client.Client, uid uint32, ref *bodyPartRef) string {
+	if ref == nil {
+		return ""
+	}
+	seqSet := new(imap.SeqSet)
+	seqSet.AddNum(uid)
+	section := &imap.BodySectionName{BodyPartName: imap.BodyPartName{Path: ref.path}}
+	data := fetchSectionBytes(c, seqSet, section)
+	return decodeBodyPartContent(data, ref.part)
+}
+
+func decodeBodyPartContent(data []byte, part *imap.BodyStructure) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if part == nil {
+		return string(data)
+	}
+	decoded, err := decodeAttachmentData(data, part.Encoding)
+	if err != nil {
+		log.Printf("正文解码失败, encoding=%s: %v", part.Encoding, err)
+		return string(data)
+	}
+	return string(decoded)
+}
+
 // fetchSection 获取指定 section 的正文内容.
-// 使用 section 作为 key 精确匹配 Body map,避免取到错误的 section 数据.
 func fetchSection(c *client.Client, seqSet *imap.SeqSet, section *imap.BodySectionName) string {
 	data := fetchSectionBytes(c, seqSet, section)
 	if len(data) == 0 {
@@ -533,15 +559,23 @@ func fetchSectionBytes(c *client.Client, seqSet *imap.SeqSet, section *imap.Body
 		return nil
 	}
 
-	// 精确匹配:用 section 指针作为 key 从 Body map 中获取
-	if r, ok := msg.Body[section]; ok {
-		data, err := io.ReadAll(r)
-		if err == nil && len(data) > 0 {
-			return data
-		}
+	r := readBodyLiteral(msg, section)
+	if r == nil {
+		return nil
+	}
+	data, err := io.ReadAll(r)
+	if err == nil && len(data) > 0 {
+		return data
 	}
 
 	return nil
+}
+
+func readBodyLiteral(msg *imap.Message, section *imap.BodySectionName) imap.Literal {
+	if msg == nil || section == nil {
+		return nil
+	}
+	return msg.GetBody(section)
 }
 
 // imapConn IMAP 连接配置.

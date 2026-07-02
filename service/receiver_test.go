@@ -1,7 +1,9 @@
 package service
 
 import (
+	"io"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -171,6 +173,44 @@ func TestAttachmentMetadataFromBodyStructure(t *testing.T) {
 	want := []EmailAttachment{{Name: "invoice.pdf", ContentType: "application/pdf", Size: 123456}}
 	if !reflect.DeepEqual(metadata, want) {
 		t.Fatalf("unexpected attachment metadata\nwant: %#v\n got: %#v", want, metadata)
+	}
+}
+
+func TestReadBodyLiteralMatchesEquivalentSection(t *testing.T) {
+	requested := &imap.BodySectionName{BodyPartName: imap.BodyPartName{Path: []int{1}}}
+	responded, err := imap.ParseBodySectionName(requested.FetchItem())
+	if err != nil {
+		t.Fatalf("ParseBodySectionName returned error: %v", err)
+	}
+	msg := &imap.Message{
+		Body: map[*imap.BodySectionName]imap.Literal{
+			responded: strings.NewReader("reply body"),
+		},
+	}
+
+	got := readBodyLiteral(msg, requested)
+
+	data, err := io.ReadAll(got)
+	if err != nil {
+		t.Fatalf("ReadAll returned error: %v", err)
+	}
+	if string(data) != "reply body" {
+		t.Fatalf("unexpected body %q", string(data))
+	}
+}
+
+func TestDecodeBodyPartContentDecodesBase64(t *testing.T) {
+	part := &imap.BodyStructure{
+		MIMEType:    "text",
+		MIMESubType: "plain",
+		Encoding:    "base64",
+		Params:      map[string]string{"charset": "UTF-8"},
+	}
+
+	got := decodeBodyPartContent([]byte("5L2g5aW977yM5rex5Zyz"), part)
+
+	if got != "你好，深圳" {
+		t.Fatalf("unexpected decoded body %q", got)
 	}
 }
 
