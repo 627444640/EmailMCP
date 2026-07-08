@@ -1,44 +1,142 @@
-# Email MCP
+<p align="center">
+  <img src="./app-icon-512-transparent.png" alt="Email MCP" width="116" />
+</p>
 
-Email MCP is a local desktop email MCP server for Codex. Each user installs and runs the service on their own computer; there is no remote HTTP service, shared token store, registration flow, or administrator approval page.
+<h1 align="center">Email MCP</h1>
 
-The desktop app is a configuration center. Codex talks directly to the local Go sidecar through stdio, so the MCP tools can work even when the GUI is closed.
+<p align="center">
+  Local desktop email tools for Codex, powered by a Go MCP sidecar and a Tauri settings app.
+</p>
+
+<p align="center">
+  <a href="#overview">Overview</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#key-features">Key Features</a> ·
+  <a href="#getting-started">Getting Started</a> ·
+  <a href="#mcp-tools">MCP Tools</a> ·
+  <a href="#development">Development</a>
+</p>
+
+<p align="center">
+  <img alt="Go" src="https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white" />
+  <img alt="Tauri" src="https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri&logoColor=white" />
+  <img alt="React" src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=111111" />
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white" />
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-stdio-6E56CF" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-4B5563" />
+  <img alt="Version" src="https://img.shields.io/badge/version-0.1.0-blue" />
+</p>
+
+---
+
+## Overview
+
+Email MCP is a local desktop email MCP server for Codex. It lets Codex read, search, organize, and send email through a user-owned local sidecar instead of a remote service.
+
+The desktop app is a configuration center. Codex talks directly to the local Go sidecar through stdio, so MCP tools can work even when the GUI is closed.
+
+Email MCP is designed around a narrow trust boundary:
+
+- No remote HTTP service.
+- No shared token store.
+- No registration flow.
+- No administrator approval page.
+- No mailbox authorization codes in app logs or JSON config.
 
 ## Architecture
 
-- Go sidecar: `email-mcp mcp` exposes the stdio MCP server for Codex.
-- Go config CLI: `email-mcp config ...` manages local non-secret config and OS credential-store secrets.
-- Go doctor CLI: `email-mcp doctor --json` reports local readiness.
-- Go index CLI: `email-mcp index ...` manages the local SQLite/FTS mailbox index.
-- Desktop GUI: `apps/desktop` is a Tauri + React settings center.
+```mermaid
+flowchart LR
+  Codex["Codex"] -->|"MCP stdio"| Sidecar["Go sidecar"]
+  Desktop["Tauri desktop app"] -->|"config CLI"| Sidecar
+  Sidecar -->|"IMAP"| Mailbox["User mailbox"]
+  Sidecar -->|"SMTP"| SMTP["SMTP server"]
+  Sidecar -->|"SQLite FTS5"| Index["Local mail index"]
+  Sidecar -->|"OS credential store"| Secrets["SMTP/IMAP authorization codes"]
+```
+
+Core components:
+
+| Component | Purpose |
+| --- | --- |
+| Go sidecar | `email-mcp mcp` exposes the stdio MCP server for Codex. |
+| Config CLI | `email-mcp config ...` manages non-secret config and OS credential-store secrets. |
+| Doctor CLI | `email-mcp doctor --json` reports local readiness. |
+| Index CLI | `email-mcp index ...` manages the local SQLite/FTS mailbox index. |
+| Desktop GUI | `apps/desktop` provides a Tauri + React settings center. |
+
+## Key Features
+
+- Local MCP server over stdio for Codex integration.
+- IMAP mail listing, folder discovery, search, and full-message retrieval.
+- SMTP sending with local attachment allowlists.
+- SQLite/FTS5 mailbox index for fast local search.
+- Attachment downloads constrained to a configured directory.
+- Bulk mailbox operations with dry-run defaults.
+- Desktop setup flow for mailbox settings, permissions, diagnostics, and Codex config installation.
+- Windows and macOS packaging through Tauri and GitHub Actions.
+
+## Getting Started
+
+### 1. Configure Email MCP
+
+After installing the desktop app:
+
+1. Open Email MCP.
+2. Configure mailbox host, port, account, SMTP authorization code, and IMAP authorization code.
+3. Configure attachment download and allowed send-attachment directories.
+4. Enable the required permissions.
+5. Open the **Codex** page and install the MCP configuration.
+
+The desktop app writes this block into Codex config and creates a backup first:
+
+```toml
+[mcp_servers.email]
+command = "<installed email-mcp path>"
+args = ["mcp"]
+```
+
+### 2. Run Diagnostics
+
+Use the GUI **Status** page, or run:
+
+```powershell
+.\email-mcp-service.exe doctor --json
+```
+
+### 3. Build The Mail Index
+
+```powershell
+.\email-mcp-service.exe index status
+.\email-mcp-service.exe index sync --limit-per-folder 1000
+```
+
+Search the local index:
+
+```powershell
+@'
+{"keyword":"invoice","limit":20}
+'@ | .\email-mcp-service.exe index search
+```
 
 ## MCP Tools
 
-- `listEmails`
-- `listFolders`
-- `listEmailsV2`
-- `resolveSpecialFolders`
-- `searchEmails`
-- `searchAllFolders`
-- `getEmail`
-- `downloadEmailAttachments`
-- `sendEmail`
-- `createFolder`
-- `setEmailReadStatus`
-- `moveEmail`
-- `deleteEmail`
-- `bulkMoveEmails`
-- `bulkDeleteEmails`
-- `bulkSetEmailReadStatus`
-- `archiveEmails`
-- `previewOrganizePlan`
-- `applyOrganizePlan`
+Email MCP exposes primitive, auditable mailbox operations. Higher-level tasks such as invoice filtering, attachment review, amount extraction, report writing, and mailbox cleanup are handled by Codex using these tools.
 
-Invoice filtering, attachment review, amount extraction, and report writing are Codex tasks. The MCP only provides primitive mailbox operations and controlled attachment download. Mailbox organization should be previewed first with `previewOrganizePlan` or the bulk tools' default dry-run behavior, then executed only after confirmation.
+| Area | Tools |
+| --- | --- |
+| Read | `listEmails`, `listEmailsV2`, `listFolders`, `searchAllFolders`, `getEmail` |
+| Local index | `searchEmails` |
+| Attachments | `downloadEmailAttachments` |
+| Send | `sendEmail` |
+| Folders | `createFolder`, `resolveSpecialFolders` |
+| Message state | `setEmailReadStatus`, `moveEmail`, `deleteEmail` |
+| Bulk operations | `bulkMoveEmails`, `bulkDeleteEmails`, `bulkSetEmailReadStatus`, `archiveEmails` |
+| Organization workflow | `previewOrganizePlan`, `applyOrganizePlan` |
+
+Mailbox organization should be previewed first with `previewOrganizePlan` or the bulk tools' default dry-run behavior, then executed only after confirmation.
 
 ## Desktop Install
-
-Prebuilt internal packages should be distributed from GitHub Releases, not GitHub Packages. GitHub Packages is for package registries such as npm, NuGet, Maven, RubyGems, or container images.
 
 ### Windows
 
@@ -89,49 +187,27 @@ apps/desktop/src-tauri/target/release/bundle/macos/
 
 For unsigned internal builds, macOS may block the first launch. Use Control-click -> **Open**, or approve it from **System Settings -> Privacy & Security**.
 
-## Publishing Releases
+## Config And Secrets
 
-This repository includes a manual GitHub Actions release workflow:
+| Item | Location |
+| --- | --- |
+| Windows config | `%APPDATA%\EmailMCP\config.json` |
+| macOS config | `~/Library/Application Support/EmailMCP/config.json` |
+| SMTP/IMAP authorization codes | OS credential store |
+| Local mailbox index | OS cache directory under `EmailMCP/mail-index.db`, unless a custom path is configured |
+| Development fallback | `.env` beside the sidecar or in the working directory |
 
-```text
-.github/workflows/release.yml
-```
+The GUI does not display or log SMTP/IMAP authorization codes.
 
-To publish desktop packages:
+## Safety Boundaries
 
-1. Open the GitHub repository.
-2. Go to **Actions**.
-3. Run **Release desktop packages**.
-4. Enter a version such as `0.1.0`.
-5. Keep `prerelease=true` for unsigned internal builds.
-6. Wait for the Windows and macOS jobs to finish.
-7. Open **Releases** and download the generated installer files.
-
-The workflow builds:
-
-- Windows NSIS setup executable.
-- macOS dmg.
-- macOS zipped `.app`.
-
-The release workflow temporarily applies the input version to the desktop package metadata during CI. Source files in the repository are not modified by the workflow.
-
-## Codex Integration
-
-After installing the desktop app:
-
-1. Open Email MCP.
-2. Configure mailbox host, port, account, and SMTP/IMAP authorization codes.
-3. Configure attachment download and allowed send-attachment directories.
-4. Enable the required permissions.
-5. Open the **Codex** page and install the MCP configuration.
-
-The desktop app writes this block into Codex config and creates a backup first:
-
-```toml
-[mcp_servers.email]
-command = "<installed email-mcp path>"
-args = ["mcp"]
-```
+- No HTTP listener is started by this version.
+- No Bearer token is used; the local OS user is the authority boundary.
+- Attachment downloads are written only to the configured download directory.
+- Sending attachments can read only configured whitelist directories.
+- `deleteEmail` moves messages to Trash; hard delete is not exposed.
+- Bulk move/delete/archive tools default to dry-run mode.
+- Mailbox organization should always be previewed before execution.
 
 ## Development
 
@@ -145,9 +221,6 @@ go build -buildvcs=false -o email-mcp-service.exe .
 .\email-mcp-service.exe doctor --json
 .\email-mcp-service.exe index status
 .\email-mcp-service.exe index sync --limit-per-folder 200
-@'
-{"keyword":"invoice","limit":20}
-'@ | .\email-mcp-service.exe index search
 ```
 
 Desktop app:
@@ -159,25 +232,38 @@ npm run tauri:dev
 npm run tauri:build
 ```
 
-Desktop builds require Node.js, Go, and Rust/Cargo. The Tauri build script runs `npm run prepare:sidecar`, which compiles the Go sidecar into `apps/desktop/src-tauri/binaries/email-mcp-<target-triple>`.
+Desktop builds require Node.js, Go, and Rust/Cargo. The Tauri build script runs `npm run prepare:sidecar`, which compiles the Go sidecar into:
 
-## Config And Secrets
+```text
+apps/desktop/src-tauri/binaries/email-mcp-<target-triple>
+```
 
-- Windows config: `%APPDATA%\EmailMCP\config.json`
-- macOS config: `~/Library/Application Support/EmailMCP/config.json`
-- SMTP/IMAP authorization codes are stored in the OS credential store.
-- Local mailbox index: the OS cache directory under `EmailMCP/mail-index.db`, unless a custom path is configured.
-- `.env` is only a development fallback for running the Go sidecar directly.
+## Publishing Releases
 
-## Safety Boundaries
+This repository includes manual GitHub Actions release workflows:
 
-- No HTTP listener is started by this version.
-- No Bearer token is used; the local OS user is the authority boundary.
-- Attachment downloads are written only to the configured download directory.
-- Sending attachments can read only configured whitelist directories.
-- `deleteEmail` moves messages to Trash; hard delete is not exposed.
-- Bulk move/delete/archive tools default to dry-run mode.
-- The GUI does not display or log SMTP/IMAP authorization codes.
+```text
+.github/workflows/build-macos.yml
+.github/workflows/release.yml
+```
+
+To publish desktop packages:
+
+1. Open the GitHub repository.
+2. Go to **Actions**.
+3. Run **Release desktop packages**.
+4. Enter a version such as `0.1.0`.
+5. Keep `prerelease=true` for unsigned internal builds.
+6. Wait for the Windows and macOS jobs to finish.
+7. Open **Releases** and download the generated installer files.
+
+The release workflow builds:
+
+- Windows NSIS setup executable.
+- macOS dmg.
+- macOS zipped `.app`.
+
+The release workflow temporarily applies the input version to desktop package metadata during CI. Source files in the repository are not modified by the workflow.
 
 ## Repository Hygiene
 
